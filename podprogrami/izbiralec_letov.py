@@ -1,6 +1,6 @@
-import json
+
 from serpapi import GoogleSearch
-import utility_funkcije as f
+import podprogrami.utility_funkcije as f
 import math
 
 class IzbiralecLetov:
@@ -55,6 +55,12 @@ class IzbiralecLetov:
                     print("prosim vnesite stevilo.")
                     break
 
+        #normirajmo vsa stevila
+        sestevek = sum(nova_preferenca.values())
+        if sestevek != 0:
+            for pref in nova_preferenca:
+                nova_preferenca[pref] = nova_preferenca[pref]/sestevek
+
         self.set_preferenca(nova_preferenca)
 
     def vpis_sprejemljive_ure_cakanja(self):
@@ -86,57 +92,51 @@ class IzbiralecLetov:
 
     @staticmethod
     def pridobi_lete(iz_kje, kam, datum_tja, datum_nazaj = ""):
-        """Funkcija, ki sprejme letalisce iz katerega gremo, letalisce v katerega hocemo prispeti, cas odhoda ko gremo tja in cas odhoda
-        ko gremo nazaj. Iz (letalisce iz katerega gremo) je lahko tudi tabela vecih letalisc.
+        """Metoda, ki sprejme letalisce iz katerega gremo, letalisce v katerega hocemo prispeti, cas odhoda ko gremo tja in cas odhoda
+        ko gremo nazaj. Iz_kje (letalisce iz katerega gremo) je lahko tudi niz vecih letalisc locenih z vejico.
+        metode podatke letov in link do google strani 
         """
-        key = "9aa8f07a4838c4c78081cbafe35b26cd7389b628269b05fe8304a3e55f902c47"
-        letalisca = []
-        if isinstance(iz_kje, str) and len(iz_kje) == 3:
-            letalisca = [iz_kje]
-        else:
-            iz_kje = [iz_kje]
-        iz_kje = [letalisce for letalisca in iz_kje for letalisce in letalisca.split(",")]
-        if isinstance(iz_kje, list) and len(iz_kje) > 3:
-            for i in range(0, len(iz_kje), 3):
-                zdruzeno = ','.join(iz_kje[i:i+3])
-                letalisca.append(zdruzeno)
+        key = "30aaff7063797c81850350cf7d1f86969cc9952fd844c9d917d5b0f4eef0907f"
+ 
+        params = {
+            "type" : 2,
+            "engine": "google_flights",
+            "departure_id": iz_kje,
+            "arrival_id": kam,
+            "outbound_date": datum_tja,
+            "currency": "EUR",
+            "hl": "sl",
+            "api_key": key
+        } 
         vsi_leti = []
-        for iz_i in letalisca:
-            params = {
-                "type" : 2,
-                "engine": "google_flights",
-                "departure_id": iz_i,
-                "arrival_id": kam,
-                "outbound_date": datum_tja,
-                "currency": "EUR",
-                "hl": "sl",
-                "api_key": key
-            } 
-            if datum_nazaj:
-                params["type"] = 1
-                params["return_date"] = datum_nazaj
-            search = GoogleSearch(params)
-            results = search.get_json()
+        if datum_nazaj:
+            params["type"] = 1
+            params["return_date"] = datum_nazaj
+        search = GoogleSearch(params)
+        results = search.get_json()
+        #print("res:\n",results)
+        try:
+            kombinirani_leti = results["best_flights"] + results["other_flights"]
+        except:
+            print(f"Napaka pri zdruzevanju najbolsih in ostalih letov")
+        for let in kombinirani_leti:
             try:
-                kombinirani_leti = results["best_flights"] + results["other_flights"]
-                for let in kombinirani_leti:
-                    try:
-                        _ = let["price"]
-                        _ = let["layovers"]
-                        _ = let["flights"]
-                        _ = let["carbon_emissions"]["this_flight"]
-                        vsi_leti.append(let)
-                    except KeyError:
-                        continue  # ignoriramo nepopoln let
-            except:
-                print(f"Napaka pri pridobivanju podatkov za lete iz {iz_i}")
-        return vsi_leti
+                _ = let["price"]
+                _ = let["layovers"]
+                _ = let["flights"]
+                _ = let["carbon_emissions"]["this_flight"]
+                vsi_leti.append(let)
+            except KeyError:
+                continue  # ignoriramo nepopoln let
+        
+        #print("vsileti\n",vsi_leti)
+        return vsi_leti, results["search_metadata"]["google_flights_url"]
 
 
     def najbolsi_let(self, iz, kam, datum_tja, datum_nazaj = 0, n = 1):
-        """vrne n najbolsih letov v urejenem seznamu (urejen po oceni nasih preferenc)"""
+        """vrne n najbolsih letov v urejenem seznamu (urejen po oceni nasih preferenc), in link do google flights"""
         try:
-            tabela_letov = IzbiralecLetov.pridobi_lete(iz, kam, datum_tja, datum_nazaj)
+            tabela_letov, link = IzbiralecLetov.pridobi_lete(iz, kam, datum_tja, datum_nazaj)
         except: #zalomi se ce ne najde letov zato vrnemo prazen seznam
             return []
 
@@ -169,7 +169,7 @@ class IzbiralecLetov:
                     break
                 i += 1
 
-        return naj_leti
+        return naj_leti, link
         
 
     def _oceni_ceno(self, ocene, st_vseh_opcij):
